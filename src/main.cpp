@@ -10,6 +10,12 @@ using namespace std;
 
 #define EPSILON 0.0001f
 
+static const SDL_Color jaune = {240, 240, 23, 255};
+static const SDL_Color vert = {0, 240, 160, 255};
+static const SDL_Color bleu = {40, 30, 200, 255};
+static const SDL_Color rouge = {200, 30, 100, 255};
+
+
 struct Coords
 {
     int x, y;
@@ -36,8 +42,10 @@ struct Application
     int width, height;
     Coords focus{100, 100};
 
-    std::vector<Coords> points;
+    std::vector<Coords> Dpoints;
     std::vector<Triangle> triangles;
+    std::vector<Coords> Vpoints;
+    std::vector<Segment> Vsegments;
 };
 
 bool compareCoords(Coords point1, Coords point2)
@@ -47,15 +55,15 @@ bool compareCoords(Coords point1, Coords point2)
     return point1.y < point2.y;
 }
 
-void drawPoints(SDL_Renderer *renderer, const std::vector<Coords> &points)
+void drawPoints(SDL_Renderer *renderer, const std::vector<Coords> &points, SDL_Color color)
 {
     for (std::size_t i = 0; i < points.size(); i++)
     {
-        filledCircleRGBA(renderer, points[i].x, points[i].y, 3, 240, 240, 23, SDL_ALPHA_OPAQUE);
+        filledCircleRGBA(renderer, points[i].x, points[i].y, 3, color.r, color.g, color.b , SDL_ALPHA_OPAQUE);
     }
 }
 
-void drawSegments(SDL_Renderer *renderer, const std::vector<Segment> &segments)
+void drawSegments(SDL_Renderer *renderer, const std::vector<Segment> &segments, SDL_Color color)
 {
     for (std::size_t i = 0; i < segments.size(); i++)
     {
@@ -63,11 +71,11 @@ void drawSegments(SDL_Renderer *renderer, const std::vector<Segment> &segments)
             renderer,
             segments[i].p1.x, segments[i].p1.y,
             segments[i].p2.x, segments[i].p2.y,
-            240, 240, 20, SDL_ALPHA_OPAQUE);
+            color.r, color.g, color.b, SDL_ALPHA_OPAQUE);
     }
 }
 
-void drawTriangles(SDL_Renderer *renderer, const std::vector<Triangle> &triangles)
+void drawTriangles(SDL_Renderer *renderer, const std::vector<Triangle> &triangles, SDL_Color color)
 {
     for (std::size_t i = 0; i < triangles.size(); i++)
     {
@@ -77,7 +85,7 @@ void drawTriangles(SDL_Renderer *renderer, const std::vector<Triangle> &triangle
             t.p1.x, t.p1.y,
             t.p2.x, t.p2.y,
             t.p3.x, t.p3.y,
-            0, 240, 160, SDL_ALPHA_OPAQUE
+            color.r, color.g, color.b, SDL_ALPHA_OPAQUE
         );
     }
 }
@@ -88,8 +96,11 @@ void draw(SDL_Renderer *renderer, const Application &app)
     int width, height;
     SDL_GetRendererOutputSize(renderer, &width, &height);
 
-    drawPoints(renderer, app.points);
-    drawTriangles(renderer, app.triangles);
+    drawPoints(renderer, app.Dpoints, jaune);
+    drawTriangles(renderer, app.triangles, vert);
+    drawPoints(renderer, app.Vpoints, rouge);
+    drawSegments(renderer, app.Vsegments, bleu);
+
 }
 
 /*
@@ -157,70 +168,6 @@ bool CircumCircle(
     return ((drsqr - *rsqr) <= EPSILON ? true : false);
 }
 
-void delaunay (Application &app)
-{
-    //on trie les points selon x
-    sort(app.points.begin(), app.points.end(), compareCoords); 
-
-    //on vide la liste existante des triangles
-    app.triangles.clear();
-
-    //on créé un très grand triangle et on l'ajoute à la liste de triangles
-    Triangle bigTriangle{Coords{-1000, -1000}, Coords{500, 3000}, Coords{1500, -1000}};
-    app.triangles.push_back(bigTriangle);
-
-    for(size_t i=0; i<app.points.size(); i++){
-        
-        //on créé la liste de segments
-        vector<Segment> LS;
-        
-        //on boucle sur les triangles déjà créés
-        for (size_t j=0; j < app.triangles.size(); j++){
-            Triangle T = app.triangles.at(j);
-
-            // Si le cercle circonscrit contient le point P...
-            float xc, yc, rayon;
-            if (CircumCircle(app.points.at(i).x, app.points.at(i).y, T.p1.x, T.p1.y, T.p2.x, T.p2.y, T.p3.x, T.p3.y, &xc, &yc, &rayon)){
-                //on récupère les segments de ce triangle dans LS
-                LS.push_back(Segment{T.p1, T.p2});
-                LS.push_back(Segment{T.p2, T.p3});
-                LS.push_back(Segment{T.p3, T.p1});
-
-                //on retire le triangle T de la liste
-                app.triangles.erase(app.triangles.begin() + j);
-                j--;
-            }
-        }
-
-        //on boucle sur les segments de liste LS
-        for (size_t k=0; k<LS.size(); k++){
-            Segment Sk = LS.at(k);
-            
-            for (size_t l=0; l < LS.size(); l++){
-                Segment Sl = LS.at(l);
-
-                //on ne compare pas un segment à lui-même
-                if (k == l) break;
-
-                //s'il y a doublon on supprime les 2 segments
-                if ((Sk.p1 == Sl.p2) && (Sk.p2 == Sl.p1)){
-                    LS.erase(LS.begin() + k);
-                    LS.erase(LS.begin() + l);
-                    k--;
-                    l--;
-                }
-            }
-        }
-
-        //on créé des triangles à partir des segments de LS et du point sur lequel on boucle actuellement 
-        for(size_t m=0; m<LS.size(); m++){
-            app.triangles.push_back(Triangle{LS.at(m).p1, LS.at(m).p2, app.points.at(i)});
-        }
-        
-    }
-
-}
-
 void construitVoronoi(Application &app)
 {
     // Milestone 0 : on dessine des triangles
@@ -231,10 +178,8 @@ void construitVoronoi(Application &app)
     //     }
     // }
 
-    //delaunay(app);
-
     //on trie les points selon x
-    sort(app.points.begin(), app.points.end(), compareCoords); 
+    sort(app.Dpoints.begin(), app.Dpoints.end(), compareCoords); 
 
     //on vide la liste existante des triangles
     app.triangles.clear();
@@ -243,7 +188,7 @@ void construitVoronoi(Application &app)
     Triangle bigTriangle{Coords{-1000, -1000}, Coords{500, 3000}, Coords{1500, -1000}};
     app.triangles.push_back(bigTriangle);
 
-    for(size_t i=0; i<app.points.size(); i++){
+    for(size_t i=0; i<app.Dpoints.size(); i++){
         
         //on créé la liste de segments
         vector<Segment> LS;
@@ -254,7 +199,7 @@ void construitVoronoi(Application &app)
 
             // Si le cercle circonscrit contient le point P...
             float xc, yc, rayon;
-            if (CircumCircle(app.points.at(i).x, app.points.at(i).y, T.p1.x, T.p1.y, T.p2.x, T.p2.y, T.p3.x, T.p3.y, &xc, &yc, &rayon)){
+            if (CircumCircle(app.Dpoints.at(i).x, app.Dpoints.at(i).y, T.p1.x, T.p1.y, T.p2.x, T.p2.y, T.p3.x, T.p3.y, &xc, &yc, &rayon)){
                 //on récupère les segments de ce triangle dans LS
                 LS.push_back(Segment{T.p1, T.p2});
                 LS.push_back(Segment{T.p2, T.p3});
@@ -264,6 +209,8 @@ void construitVoronoi(Application &app)
                 app.triangles.erase(app.triangles.begin() + j);
                 j--;
             }
+
+            app.Vpoints.push_back(Coords{(int)xc, (int)yc});
         }
 
         //on boucle sur les segments de liste LS
@@ -288,7 +235,7 @@ void construitVoronoi(Application &app)
 
         //on créé des triangles à partir des segments de LS et du point sur lequel on boucle actuellement 
         for(size_t m=0; m<LS.size(); m++){
-            app.triangles.push_back(Triangle{LS.at(m).p1, LS.at(m).p2, app.points.at(i)});
+            app.triangles.push_back(Triangle{LS.at(m).p1, LS.at(m).p2, app.Dpoints.at(i)});
         }
         
     }
@@ -318,12 +265,13 @@ bool handleEvent(Application &app)
             {
                 app.focus.x = e.button.x;
                 app.focus.y = e.button.y;
-                app.points.clear();
+                app.Dpoints.clear();
+                app.Vpoints.clear();
             }
             else if (e.button.button == SDL_BUTTON_LEFT)
             {
                 app.focus.y = 0;
-                app.points.push_back(Coords{e.button.x, e.button.y});
+                app.Dpoints.push_back(Coords{e.button.x, e.button.y});
                 construitVoronoi(app);
             }
         }
