@@ -37,6 +37,13 @@ struct Triangle
     bool complet=false;
 };
 
+struct Polygone {
+    Coords centre;
+    std::vector<Coords> sommets;  
+};
+
+
+// ...
 struct Application
 {
     int width, height;
@@ -44,8 +51,7 @@ struct Application
 
     std::vector<Coords> Dpoints;
     std::vector<Triangle> triangles;
-    std::vector<Coords> Vpoints;
-    std::vector<Segment> Vsegments;
+    std::vector<Polygone> polygones;
 };
 
 bool compareCoords(Coords point1, Coords point2)
@@ -90,6 +96,26 @@ void drawTriangles(SDL_Renderer *renderer, const std::vector<Triangle> &triangle
     }
 }
 
+void drawPolygones(SDL_Renderer *renderer, const std::vector<Polygone> &polygones, SDL_Color color)
+{
+    for (std::size_t i = 0; i < polygones.size(); i++)
+    {
+        const vector<Coords> sommets = polygones[i].sommets;
+        Sint16 vx[sommets.size()], vy[sommets.size()];
+        for (int j=0; j<sommets.size(); j++) {
+            vx[j] = sommets[j].x;
+            vy[j] = sommets[j].y;
+        }
+        const Polygone& p = polygones[i];
+        polygonRGBA(
+            renderer,
+            vx, vy,
+            sommets.size(),
+            color.r, color.g, color.b, SDL_ALPHA_OPAQUE
+        );
+    }
+}
+
 void draw(SDL_Renderer *renderer, const Application &app)
 {
     /* Remplissez cette fonction pour faire l'affichage du jeu */
@@ -98,8 +124,9 @@ void draw(SDL_Renderer *renderer, const Application &app)
 
     drawPoints(renderer, app.Dpoints, jaune);
     drawTriangles(renderer, app.triangles, vert);
-    drawPoints(renderer, app.Vpoints, rouge);
-    drawSegments(renderer, app.Vsegments, bleu);
+    drawPolygones(renderer, app.polygones, bleu);
+    // drawPoints(renderer, app.Vpoints, rouge);
+    // drawSegments(renderer, app.Vsegments, bleu);
 
 }
 
@@ -168,9 +195,17 @@ bool CircumCircle(
     return ((drsqr - *rsqr) <= EPSILON ? true : false);
 }
 
+/*
+    Détermine si un point fait partie des sommets d'un triangle
+*/
+bool hasVertex(Coords point, Triangle triangle){
+    return (point == triangle.p1 || point == triangle.p2 || point == triangle.p3);
+
+}
+
 void construitVoronoi(Application &app)
 {
-    // Milestone 0 : on dessine des triangles
+// Milestone 0 : on dessine des triangles
     // int size = app.points.size();
     // if (size>=3){
     //     for(int i=0; i<size-2; i++){
@@ -178,6 +213,7 @@ void construitVoronoi(Application &app)
     //     }
     // }
 
+//Milestone 1 Delaunay
     //on trie les points selon x
     sort(app.Dpoints.begin(), app.Dpoints.end(), compareCoords); 
 
@@ -209,8 +245,6 @@ void construitVoronoi(Application &app)
                 app.triangles.erase(app.triangles.begin() + j);
                 j--;
             }
-
-            app.Vpoints.push_back(Coords{(int)xc, (int)yc});
         }
 
         //on boucle sur les segments de liste LS
@@ -239,6 +273,51 @@ void construitVoronoi(Application &app)
         }
         
     }
+
+//Milestone 2 Voronoi
+
+    app.polygones.clear();
+    // for (size_t i=0; i < app.triangles.size(); i++){
+    //     float xc, yc, rayon;
+    //     Triangle T = app.triangles.at(i);
+    //     CircumCircle(0,0, T.p1.x, T.p1.y, T.p2.x, T.p2.y, T.p3.x, T.p3.y, &xc, &yc, &rayon);
+    //     app.Vpoints.push_back(Coords{(int)xc, (int)yc});
+    // }
+
+    Polygone bigPolygone;
+    bigPolygone.sommets.push_back(Coords{-1000, -1000});
+    bigPolygone.sommets.push_back(Coords{500, 3000});
+    bigPolygone.sommets.push_back(Coords{1500, -1000});
+
+    app.polygones.push_back(bigPolygone);
+    // Parcourir chaque point de la triangulation de Delaunay
+    for (size_t i = 0; i < app.Dpoints.size(); i++) {
+
+        // Récupérer les triangles adjacents partageant le sommet
+        vector<Triangle> adjacentTriangles;
+        for (size_t j = 0; j < app.triangles.size(); j++) {
+            if (hasVertex(app.Dpoints.at(i), app.triangles.at(j))) {
+                adjacentTriangles.push_back(app.triangles.at(j));
+            }
+        }
+
+        // Récupérer les centres des cercles circonscrits
+        std::vector<Coords> pointsVoronoi;
+        for (const auto& triangle : adjacentTriangles) {
+            float xc, yc, rayon;
+            CircumCircle(0,0, triangle.p1.x, triangle.p1.y, triangle.p2.x, triangle.p2.y, triangle.p3.x, triangle.p3.y, &xc, &yc, &rayon);
+            pointsVoronoi.push_back(Coords{(int)xc, (int)yc});
+        }
+
+        // Créer une nouvelle cellule de Voronoi
+        Polygone polygone;
+        polygone.centre = app.Dpoints.at(i);
+        polygone.sommets = pointsVoronoi;
+
+        // Ajouter la cellule à la liste
+        app.polygones.push_back(polygone);
+    }
+
     
 }
 
@@ -266,7 +345,7 @@ bool handleEvent(Application &app)
                 app.focus.x = e.button.x;
                 app.focus.y = e.button.y;
                 app.Dpoints.clear();
-                app.Vpoints.clear();
+                // app.Vpoints.clear();
             }
             else if (e.button.button == SDL_BUTTON_LEFT)
             {
