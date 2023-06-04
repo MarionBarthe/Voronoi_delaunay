@@ -38,7 +38,6 @@ struct Triangle
 };
 
 struct Polygone {
-    Coords centre;
     std::vector<Coords> sommets;  
 };
 
@@ -59,6 +58,14 @@ bool compareCoords(Coords point1, Coords point2)
     if (point1.y == point2.y)
         return point1.x < point2.x;
     return point1.y < point2.y;
+}
+
+bool compareCoordsPoly(Coords point1, Coords point2)
+{
+    if (point1.x >= point2.x)
+        return point1.y >= point2.y;
+    else
+        return true;
 }
 
 void drawPoints(SDL_Renderer *renderer, const std::vector<Coords> &points, SDL_Color color)
@@ -113,6 +120,8 @@ void drawPolygones(SDL_Renderer *renderer, const std::vector<Polygone> &polygone
             sommets.size(),
             color.r, color.g, color.b, SDL_ALPHA_OPAQUE
         );
+    
+        drawPoints(renderer, sommets, bleu);
     }
 }
 
@@ -124,7 +133,7 @@ void draw(SDL_Renderer *renderer, const Application &app)
 
     drawPoints(renderer, app.Dpoints, jaune);
     drawTriangles(renderer, app.triangles, vert);
-    drawPolygones(renderer, app.polygones, bleu);
+    drawPolygones(renderer, app.polygones, rouge);
     // drawPoints(renderer, app.Vpoints, rouge);
     // drawSegments(renderer, app.Vsegments, bleu);
 
@@ -203,17 +212,12 @@ bool hasVertex(Coords point, Triangle triangle){
 
 }
 
-void construitVoronoi(Application &app)
+/*
+    Milestone 1 : triangulation de Delaunay
+*/
+void delaunay (Application &app)
 {
-// Milestone 0 : on dessine des triangles
-    // int size = app.points.size();
-    // if (size>=3){
-    //     for(int i=0; i<size-2; i++){
-    //         app.triangles.push_back(Triangle{app.points.at(i), app.points.at(i+1), app.points.at(i+2)});
-    //     }
-    // }
-
-//Milestone 1 Delaunay
+    
     //on trie les points selon x
     sort(app.Dpoints.begin(), app.Dpoints.end(), compareCoords); 
 
@@ -253,16 +257,12 @@ void construitVoronoi(Application &app)
             
             for (size_t l=0; l < LS.size(); l++){
                 Segment Sl = LS.at(l);
-
-                //on ne compare pas un segment à lui-même
-                if (k == l) break;
-
                 //s'il y a doublon on supprime les 2 segments
                 if ((Sk.p1 == Sl.p2) && (Sk.p2 == Sl.p1)){
-                    LS.erase(LS.begin() + k);
                     LS.erase(LS.begin() + l);
-                    k--;
                     l--;
+                    LS.erase(LS.begin() + k);
+                    k--;
                 }
             }
         }
@@ -273,52 +273,58 @@ void construitVoronoi(Application &app)
         }
         
     }
+}
 
-//Milestone 2 Voronoi
-
+/* 
+    Milestone 2 : diagramme de Voronoi
+*/
+void voronoi(Application &app)
+{
+    //on vide la liste de polygones 
     app.polygones.clear();
-    // for (size_t i=0; i < app.triangles.size(); i++){
-    //     float xc, yc, rayon;
-    //     Triangle T = app.triangles.at(i);
-    //     CircumCircle(0,0, T.p1.x, T.p1.y, T.p2.x, T.p2.y, T.p3.x, T.p3.y, &xc, &yc, &rayon);
-    //     app.Vpoints.push_back(Coords{(int)xc, (int)yc});
-    // }
+    
+    //on parcourt chaque point de la triangulation de Delaunay
+    for (const auto& point : app.Dpoints) {
 
-    Polygone bigPolygone;
-    bigPolygone.sommets.push_back(Coords{-1000, -1000});
-    bigPolygone.sommets.push_back(Coords{500, 3000});
-    bigPolygone.sommets.push_back(Coords{1500, -1000});
+        Polygone poly;
 
-    app.polygones.push_back(bigPolygone);
-    // Parcourir chaque point de la triangulation de Delaunay
-    for (size_t i = 0; i < app.Dpoints.size(); i++) {
-
-        // Récupérer les triangles adjacents partageant le sommet
+        //on récupère les triangles adjacents partageant le sommet
         vector<Triangle> adjacentTriangles;
-        for (size_t j = 0; j < app.triangles.size(); j++) {
-            if (hasVertex(app.Dpoints.at(i), app.triangles.at(j))) {
-                adjacentTriangles.push_back(app.triangles.at(j));
+        for (const auto& triangle : app.triangles) {
+            if (hasVertex(point, triangle)) {
+                adjacentTriangles.push_back(triangle);
             }
-        }
+        }    
 
-        // Récupérer les centres des cercles circonscrits
-        std::vector<Coords> pointsVoronoi;
+        //on récupère les centres des cercles circonscrits de ces triangles adjacents
         for (const auto& triangle : adjacentTriangles) {
             float xc, yc, rayon;
             CircumCircle(0,0, triangle.p1.x, triangle.p1.y, triangle.p2.x, triangle.p2.y, triangle.p3.x, triangle.p3.y, &xc, &yc, &rayon);
-            pointsVoronoi.push_back(Coords{(int)xc, (int)yc});
+            poly.sommets.push_back(Coords{(int)xc, (int)yc});
         }
 
-        // Créer une nouvelle cellule de Voronoi
-        Polygone polygone;
-        polygone.centre = app.Dpoints.at(i);
-        polygone.sommets = pointsVoronoi;
+        //essai de tri des points du polygone pour qu'il soit dessiné correctement
+        //mais ne marche pas comme il se doit
+        sort(poly.sommets.begin(), poly.sommets.end(), compareCoordsPoly);
 
-        // Ajouter la cellule à la liste
-        app.polygones.push_back(polygone);
+        //on ajoute le polygone créé à notre liste
+        app.polygones.push_back(poly);
     }
 
-    
+}
+void construitVoronoi(Application &app)
+{
+    // Milestone 0 : dessiner des triangles
+    // int size = app.points.size();
+    // if (size>=3){
+    //     for(int i=0; i<size-2; i++){
+    //         app.triangles.push_back(Triangle{app.points.at(i), app.points.at(i+1), app.points.at(i+2)});
+    //     }
+    // }
+
+    delaunay(app);
+
+    voronoi(app);
 }
 
 
